@@ -60,6 +60,14 @@ const getDirectResponse = (query: string, userName?: string | null) => {
     return "The Coding Round includes 100 practice problems and a built-in playground, so you can run code in your browser with support for C++, Java, and Python.";
   }
 
+  if (queryMatches(query, ['how many coding problems', 'how many problems', 'coding problems'])) {
+    return "We have 100 coding problems in total, split across Easy, Medium, and Hard levels with complete solutions in C++, Java, and Python.";
+  }
+
+  if (queryMatches(query, ['passing criteria', 'pass criteria', 'ultimate exam', '65%', '85 marks'])) {
+    return "To pass the Ultimate Exam, you need 65% or above, which means 85 marks out of 130. The full exam lasts 180 minutes and covers 6 sections.";
+  }
+
   if (queryMatches(query, ['blind 75', 'dsa', 'data structures'])) {
     return "Blind 75 offers 75 essential DSA problems across 10 categories, with full solutions to help you prepare for coding interviews.";
   }
