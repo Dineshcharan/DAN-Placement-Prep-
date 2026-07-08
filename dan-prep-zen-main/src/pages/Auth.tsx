@@ -103,12 +103,22 @@ export default function Auth() {
     if (user) navigate('/dashboard', { replace: true });
   }, [user, navigate]);
 
-  // Check for password reset hash in URL
+  // Check for password reset hash in URL - more robust detection
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash && hash.includes('access_token')) {
-      setShowResetPassword(true);
-    }
+    const checkResetHash = () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token')) {
+        setShowResetPassword(true);
+      } else {
+        setShowResetPassword(false);
+      }
+    };
+
+    // Check on mount and when hash changes
+    checkResetHash();
+    window.addEventListener('hashchange', checkResetHash);
+    
+    return () => window.removeEventListener('hashchange', checkResetHash);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -314,6 +324,7 @@ export default function Auth() {
   };
 
   const handleResetPassword = async () => {
+    // Validation
     if (!formData.password) {
       toast.error('Please enter a new password');
       return;
@@ -329,16 +340,41 @@ export default function Auth() {
       return;
     }
 
+    // Check if confirmPassword matches (for extra safety)
+    if (formData.confirmPassword && formData.password !== formData.confirmPassword) {
+      toast.error("Passwords don't match");
+      return;
+    }
+
     setLoading(true);
     try {
+      // Verify that we have a valid session with access token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        toast.error('Session expired. Please request a new password reset link.');
+        setShowResetPassword(false);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+
+      // Update password
       const { error } = await supabase.auth.updateUser({
         password: formData.password
       });
 
       if (error) {
-        toast.error('Failed to update password. Please try again.');
+        if (error.message.includes('session_not_found') || error.message.includes('session')) {
+          toast.error('Session expired. Please request a new password reset link.');
+          setShowResetPassword(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+          toast.error(error.message || 'Failed to update password. Please try again.');
+        }
       } else {
-        toast.success('Password updated successfully! Please sign in with your new password.');
+        toast.success('✅ Password updated successfully! You can now sign in with your new password.');
+        
+        // Clear form and state
         setShowResetPassword(false);
         setFormData({
           email: '',
@@ -351,11 +387,18 @@ export default function Auth() {
           collegeName: '',
           yearOfStudy: '',
         });
+        
         // Clear the hash from URL
         window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Optionally redirect to sign in after a delay
+        setTimeout(() => {
+          setIsSignUp(false);
+        }, 1500);
       }
-    } catch (error) {
-      toast.error('An unexpected error occurred.');
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      toast.error('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -428,11 +471,35 @@ export default function Auth() {
                   Password must be at least 8 characters with uppercase, lowercase, and number.
                 </p>
               </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    placeholder="Confirm new password"
+                    disabled={loading}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    disabled={loading}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              
               <Button
                 type="button"
                 className="w-full bg-gradient-primary hover:opacity-90 transition-opacity"
                 onClick={handleResetPassword}
-                disabled={loading || !formData.password}
+                disabled={loading || !formData.password || !formData.confirmPassword}
               >
                 {loading ? 'Updating...' : 'Update Password'}
               </Button>
@@ -441,7 +508,7 @@ export default function Auth() {
                   type="button"
                   onClick={() => {
                     setShowResetPassword(false);
-                    setFormData({ ...formData, password: '' });
+                    setFormData({ ...formData, password: '', confirmPassword: '' });
                     window.history.replaceState({}, document.title, window.location.pathname);
                   }}
                   className="text-primary hover:underline"
